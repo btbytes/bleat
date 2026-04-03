@@ -62,26 +62,26 @@ jobs:
 
           mkdir -p Formula
 
-          cat > Formula/bleat.rb << "EOF"
-class Bleat < Formula
-  desc "Find what's running on your ports"
-  homepage "https://github.com/btbytes/bleat"
-  version "$VERSION"
-
-  url "$SOURCE_URL"
-  sha256 "$SOURCE_SHA"
-
-  depends_on "go" => :build
-
-  def install
-    system "go", "build", *std_go_args(ldflags: "-s -w"), "."
-  end
-
-  test do
-    system "#{bin}/bleat", "--help"
-  end
-end
-EOF
+          printf '%s\n' \
+            'class Bleat < Formula' \
+            '  desc "Find what'\''s running on your ports"' \
+            '  homepage "https://github.com/btbytes/bleat"' \
+            "  version \"$VERSION\"" \
+            '' \
+            "  url \"$SOURCE_URL\"" \
+            "  sha256 \"$SOURCE_SHA\"" \
+            '' \
+            '  depends_on "go" => :build' \
+            '' \
+            '  def install' \
+            '    system "go", "build", *std_go_args(ldflags: "-s -w"), "."' \
+            '  end' \
+            '' \
+            '  test do' \
+            '    system "#{bin}/bleat", "--help"' \
+            '  end' \
+            'end' \
+            > Formula/bleat.rb
 
           if git diff --quiet HEAD -- Formula/bleat.rb 2>/dev/null && [ -z "$(git status --porcelain Formula/bleat.rb 2>/dev/null)" ]; then
             echo "Formula unchanged, skipping commit"
