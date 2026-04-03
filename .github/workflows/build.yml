@@ -1,71 +1,46 @@
-name: Build
+name: Release
 
 on:
   push:
-    branches: [main]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build Binaries
+  release:
+    name: Release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
       - name: Read version
         id: version
         run: |
-          MAJOR_MINOR=$(cat VERSION)
-          PATCH=${{ github.run_number }}
-          VERSION="${MAJOR_MINOR}.${PATCH}"
+          VERSION=$(cat VERSION)
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
-      - name: Build all platforms
-        run: |
-          make release
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-
-      - name: Create release archives
-        run: |
-          mkdir -p release-tar
-          for f in release/bleat-*; do
-            BASENAME=$(basename "$f")
-            cp "$f" "release-tar/bleat"
-            tar czf "release-tar/${BASENAME}.tar.gz" -C release-tar bleat
-            rm release-tar/bleat
-          done
-          ls -la release-tar/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bleat-binaries
-          path: release-tar/*.tar.gz
-
-      - name: Create or update Release
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           TAG="v$VERSION"
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" --clobber release-tar/*.tar.gz
+            echo "Release $TAG already exists"
           else
             gh release create "$TAG" \
-              --title "Build $VERSION" \
+              --title "bleat $VERSION" \
               --generate-notes \
-              release-tar/*.tar.gz
+              --draft=false
           fi
 
       - name: Update Homebrew tap
@@ -73,18 +48,8 @@ jobs:
           GH_TOKEN: ${{ secrets.TAP_PAT }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          DARWIN_ARM64_URL="https://github.com/btbytes/bleat/releases/download/v${VERSION}/bleat-darwin-arm64.tar.gz"
-          DARWIN_AMD64_URL="https://github.com/btbytes/bleat/releases/download/v${VERSION}/bleat-darwin-amd64.tar.gz"
-          LINUX_AMD64_URL="https://github.com/btbytes/bleat/releases/download/v${VERSION}/bleat-linux-amd64.tar.gz"
-          LINUX_ARM64_URL="https://github.com/btbytes/bleat/releases/download/v${VERSION}/bleat-linux-arm64.tar.gz"
-
-          DARWIN_ARM64_SHA=$(curl -sL "$DARWIN_ARM64_URL" | shasum -a 256 | awk '{print $1}')
-          DARWIN_AMD64_SHA=$(curl -sL "$DARWIN_AMD64_URL" | shasum -a 256 | awk '{print $1}')
-          LINUX_AMD64_SHA=$(curl -sL "$LINUX_AMD64_URL" | shasum -a 256 | awk '{print $1}')
-          LINUX_ARM64_SHA=$(curl -sL "$LINUX_ARM64_URL" | shasum -a 256 | awk '{print $1}')
-
-          export DARWIN_ARM64_SHA DARWIN_AMD64_SHA LINUX_AMD64_SHA LINUX_ARM64_SHA
-          FORMULA=$(bash .github/scripts/update-formula.sh "$VERSION" "$DARWIN_ARM64_URL" "$DARWIN_AMD64_URL" "$LINUX_AMD64_URL" "$LINUX_ARM64_URL")
+          SOURCE_URL="https://github.com/btbytes/bleat/archive/refs/tags/v${VERSION}.tar.gz"
+          SOURCE_SHA=$(curl -sL "$SOURCE_URL" | shasum -a 256 | awk '{print $1}')
 
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -96,7 +61,27 @@ jobs:
           cd "$TMPDIR"
 
           mkdir -p Formula
-          echo "$FORMULA" > Formula/bleat.rb
+
+          cat > Formula/bleat.rb <<EOF
+class Bleat < Formula
+  desc "Find what's running on your ports"
+  homepage "https://github.com/btbytes/bleat"
+  version "$VERSION"
+
+  url "$SOURCE_URL"
+  sha256 "$SOURCE_SHA"
+
+  depends_on "go" => :build
+
+  def install
+    system "go", "build", *std_go_args(ldflags: "-s -w"), "."
+  end
+
+  test do
+    system "#{bin}/bleat", "--help"
+  end
+end
+EOF
 
           if git diff --quiet HEAD -- Formula/bleat.rb 2>/dev/null && [ -z "$(git status --porcelain Formula/bleat.rb 2>/dev/null)" ]; then
             echo "Formula unchanged, skipping commit"

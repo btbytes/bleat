@@ -28,6 +28,12 @@ A beautiful CLI tool to visualize and manage processes listening on network port
 
 ## Installation
 
+### Homebrew
+
+```bash
+brew install bleat
+```
+
 ### From Source
 
 ```bash
