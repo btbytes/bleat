@@ -31,7 +31,7 @@ A beautiful CLI tool to visualize and manage processes listening on network port
 ### Homebrew
 
 ```bash
-brew install bleat
+brew install btbytes/brew/bleat
 ```
 
 ### From Source
