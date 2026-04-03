@@ -62,7 +62,7 @@ jobs:
 
           mkdir -p Formula
 
-          cat > Formula/bleat.rb <<EOF
+          cat > Formula/bleat.rb << "EOF"
 class Bleat < Formula
   desc "Find what's running on your ports"
   homepage "https://github.com/btbytes/bleat"
