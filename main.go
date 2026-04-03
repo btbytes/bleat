@@ -27,6 +27,8 @@ func main() {
 		cmd.RunClean()
 	case "watch":
 		cmd.RunWatch()
+	case "theme":
+		cmd.RunTheme(args[1:])
 	case "help", "--help", "-h":
 		cmd.RunHelp()
 	case "--all", "-a":

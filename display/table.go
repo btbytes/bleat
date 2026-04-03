@@ -3,11 +3,15 @@ package display
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/btbytes/bleat/config"
+	"github.com/btbytes/bleat/theme"
 	"github.com/btbytes/bleat/types"
 	"github.com/charmbracelet/lipgloss"
+	gogh "github.com/willyv3/gogh-themes/lipgloss"
 )
 
 var ansiRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -28,140 +32,29 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-vl)
 }
 
-var frameworkColors = map[string]lipgloss.Color{
-	"Next.js":       lipgloss.Color("15"),
-	"Vite":          lipgloss.Color("220"),
-	"React":         lipgloss.Color("51"),
-	"Vue":           lipgloss.Color("46"),
-	"Angular":       lipgloss.Color("196"),
-	"Svelte":        lipgloss.Color("227"),
-	"SvelteKit":     lipgloss.Color("227"),
-	"Express":       lipgloss.Color("244"),
-	"Fastify":       lipgloss.Color("15"),
-	"NestJS":        lipgloss.Color("196"),
-	"Nuxt":          lipgloss.Color("46"),
-	"Remix":         lipgloss.Color("33"),
-	"Astro":         lipgloss.Color("163"),
-	"Django":        lipgloss.Color("46"),
-	"Flask":         lipgloss.Color("15"),
-	"FastAPI":       lipgloss.Color("51"),
-	"Rails":         lipgloss.Color("196"),
-	"Gatsby":        lipgloss.Color("163"),
-	"Go":            lipgloss.Color("51"),
-	"Rust":          lipgloss.Color("227"),
-	"Ruby":          lipgloss.Color("196"),
-	"Python":        lipgloss.Color("220"),
-	"Node.js":       lipgloss.Color("46"),
-	"Java":          lipgloss.Color("196"),
-	"Docker":        lipgloss.Color("33"),
-	"PostgreSQL":    lipgloss.Color("33"),
-	"Redis":         lipgloss.Color("196"),
-	"MySQL":         lipgloss.Color("33"),
-	"MongoDB":       lipgloss.Color("46"),
-	"nginx":         lipgloss.Color("46"),
-	"LocalStack":    lipgloss.Color("15"),
-	"RabbitMQ":      lipgloss.Color("227"),
-	"Kafka":         lipgloss.Color("15"),
-	"Elasticsearch": lipgloss.Color("220"),
-	"MinIO":         lipgloss.Color("196"),
-	"Bun":           lipgloss.Color("220"),
-	"Deno":          lipgloss.Color("15"),
-	"PHP":           lipgloss.Color("163"),
-	"Elixir":        lipgloss.Color("163"),
-	".NET":          lipgloss.Color("33"),
+var S theme.Styles
+
+func init() {
+	cfg, err := config.Load()
+	if err != nil {
+		S, _ = theme.BuildStyles("")
+		return
+	}
+	name := cfg.Theme
+	if name == "" {
+		name = theme.DefaultThemeName()
+	}
+	S, _ = theme.BuildStyles(name)
 }
-
-var (
-	styleTableBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("63")).
-				Padding(0, 1)
-
-	styleHeader = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("15")).
-			Background(lipgloss.Color("63")).
-			Padding(0, 1)
-
-	stylePort = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("51")).
-			Bold(true)
-
-	stylePID = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("165"))
-
-	styleProcess = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("189"))
-
-	styleProject = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("223"))
-
-	styleUptime = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("248"))
-
-	styleDim = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("244"))
-
-	styleStatusHealthy = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("46"))
-
-	styleStatusOrphaned = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("220"))
-
-	styleStatusZombie = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196"))
-
-	styleDetailTitle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("15")).
-				Background(lipgloss.Color("63")).
-				Padding(0, 1)
-
-	styleDetailSection = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("165")).
-				MarginTop(1).
-				MarginBottom(0)
-
-	styleDetailLabel = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("248")).
-				Width(12).
-				Align(lipgloss.Right)
-
-	styleCleanBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("220")).
-				Padding(0, 1)
-
-	styleWatchNew = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("46")).
-			Bold(true)
-
-	styleWatchClosed = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196")).
-				Bold(true)
-
-	styleHelpTitle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("15")).
-			Background(lipgloss.Color("63")).
-			Padding(0, 1)
-
-	styleHelpCmd = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("51"))
-
-	styleHelpDesc = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("248"))
-)
 
 func statusStyled(status string) string {
 	switch status {
 	case "healthy":
-		return styleStatusHealthy.Render("● healthy")
+		return S.StatusHealthy.Render("● healthy")
 	case "orphaned":
-		return styleStatusOrphaned.Render("● orphaned")
+		return S.StatusOrphaned.Render("● orphaned")
 	case "zombie":
-		return styleStatusZombie.Render("● zombie")
+		return S.StatusZombie.Render("● zombie")
 	default:
 		return "● " + status
 	}
@@ -182,9 +75,9 @@ func statusPlain(status string) string {
 
 func colorizeFramework(framework string) string {
 	if framework == "-" {
-		return styleDim.Render("-")
+		return S.Dim.Render("-")
 	}
-	c, ok := frameworkColors[framework]
+	c, ok := S.FrameworkColors[framework]
 	if !ok {
 		return framework
 	}
@@ -193,7 +86,7 @@ func colorizeFramework(framework string) string {
 
 func colorizeFrameworkOrDefault(framework string) string {
 	if framework == "" {
-		return styleDim.Render("-")
+		return S.Dim.Render("-")
 	}
 	return colorizeFramework(framework)
 }
@@ -205,7 +98,7 @@ func terminalWidth() int {
 func renderTable(headers []string, rows [][]string, colWidths []int) string {
 	headerCells := make([]string, len(headers))
 	for i, h := range headers {
-		headerCells[i] = styleHeader.Render(padRight(h, colWidths[i]))
+		headerCells[i] = S.Header.Render(padRight(h, colWidths[i]))
 	}
 	headerRow := strings.Join(headerCells, " ")
 
@@ -218,17 +111,17 @@ func renderTable(headers []string, rows [][]string, colWidths []int) string {
 		rowCells[ri] = strings.Join(cells, " ")
 	}
 
-	content := headerRow + "\n" + styleDim.Render(strings.Repeat("─", visibleLen(headerRow))) + "\n"
+	content := headerRow + "\n" + S.Dim.Render(strings.Repeat("─", visibleLen(headerRow))) + "\n"
 	for _, row := range rowCells {
 		content += row + "\n"
 	}
 
-	return styleTableBorder.Render(strings.TrimSuffix(content, "\n"))
+	return S.TableBorder.Render(strings.TrimSuffix(content, "\n"))
 }
 
 func PrintPortsTable(ports []types.PortInfo) {
 	if len(ports) == 0 {
-		fmt.Println(styleDim.Render("No dev ports found."))
+		fmt.Println(S.Dim.Render("No dev ports found."))
 		return
 	}
 
@@ -249,12 +142,12 @@ func PrintPortsTable(ports []types.PortInfo) {
 		}
 
 		vals := []string{
-			stylePort.Render(portStr),
-			styleProcess.Render(p.ProcessName),
-			stylePID.Render(pidStr),
-			styleProject.Render(p.ProjectName),
+			S.Port.Render(portStr),
+			S.Process.Render(p.ProcessName),
+			S.PID.Render(pidStr),
+			S.Project.Render(p.ProjectName),
 			colorizeFramework(frameworkStr),
-			styleUptime.Render(uptimeStr),
+			S.Uptime.Render(uptimeStr),
 			statusStyled(p.Status),
 		}
 
@@ -270,49 +163,49 @@ func PrintPortsTable(ports []types.PortInfo) {
 
 	fmt.Println(renderTable(headers, rows, colWidths))
 	fmt.Println()
-	fmt.Println(styleDim.Render(fmt.Sprintf("%d port(s) · bleat --all to show all · bleat ps for processes", len(ports))))
+	fmt.Println(S.Dim.Render(fmt.Sprintf("%d port(s) · bleat --all to show all · bleat ps for processes", len(ports))))
 }
 
 func PrintPortDetail(info types.PortInfo, tree []types.ProcessTreeNode) {
 	fmt.Println()
-	fmt.Println(styleDetailTitle.Render(fmt.Sprintf("  :%d  ", info.Port)))
+	fmt.Println(S.DetailTitle.Render(fmt.Sprintf("  :%d  ", info.Port)))
 	fmt.Println()
 
-	fmt.Println(styleDetailSection.Render("PROCESS"))
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Name:"), info.ProcessName)
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("PID:"), stylePID.Render(fmt.Sprintf("%d", info.PID)))
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Status:"), statusStyled(info.Status))
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Framework:"), colorizeFrameworkOrDefault(info.Framework))
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Memory:"), info.Memory)
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Uptime:"), styleUptime.Render(info.Uptime))
+	fmt.Println(S.DetailSection.Render("PROCESS"))
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Name:"), info.ProcessName)
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("PID:"), S.PID.Render(fmt.Sprintf("%d", info.PID)))
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Status:"), statusStyled(info.Status))
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Framework:"), colorizeFrameworkOrDefault(info.Framework))
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Memory:"), info.Memory)
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Uptime:"), S.Uptime.Render(info.Uptime))
 	if !info.StartTime.IsZero() {
-		fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Started:"), info.StartTime.Format("2006-01-02 15:04:05"))
+		fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Started:"), info.StartTime.Format("2006-01-02 15:04:05"))
 	}
 
 	fmt.Println()
-	fmt.Println(styleDetailSection.Render("LOCATION"))
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Directory:"), info.CWD)
-	fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Project:"), styleProject.Render(info.ProjectName))
+	fmt.Println(S.DetailSection.Render("LOCATION"))
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Directory:"), info.CWD)
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Project:"), S.Project.Render(info.ProjectName))
 	if info.GitBranch != "" {
-		fmt.Printf("  %s  %s\n", styleDetailLabel.Render("Branch:"), lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render(info.GitBranch))
+		fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Branch:"), lipgloss.NewStyle().Foreground(S.StatusHealthy.GetForeground()).Render(info.GitBranch))
 	}
 
 	if len(tree) > 1 {
 		fmt.Println()
-		fmt.Println(styleDetailSection.Render("PROCESS TREE"))
+		fmt.Println(S.DetailSection.Render("PROCESS TREE"))
 		for i, node := range tree {
 			if i == 0 {
-				fmt.Printf("  %s %s\n", stylePID.Render(fmt.Sprintf("%d", node.PID)), node.Name)
+				fmt.Printf("  %s %s\n", S.PID.Render(fmt.Sprintf("%d", node.PID)), node.Name)
 			} else {
-				fmt.Printf("  %s %s %s\n", styleDim.Render("└─"), node.Name, stylePID.Render(fmt.Sprintf("(PID: %d)", node.PID)))
+				fmt.Printf("  %s %s %s\n", S.Dim.Render("└─"), node.Name, S.PID.Render(fmt.Sprintf("(PID: %d)", node.PID)))
 			}
 		}
 	}
 
 	if info.Command != "" {
 		fmt.Println()
-		fmt.Println(styleDetailSection.Render("COMMAND"))
-		fmt.Printf("  %s\n", styleDim.Render(info.Command))
+		fmt.Println(S.DetailSection.Render("COMMAND"))
+		fmt.Printf("  %s\n", S.Dim.Render(info.Command))
 	}
 
 	fmt.Println()
@@ -320,12 +213,12 @@ func PrintPortDetail(info types.PortInfo, tree []types.ProcessTreeNode) {
 
 func PrintPsTable(processes []types.ProcessInfo) {
 	if len(processes) == 0 {
-		fmt.Println(styleDim.Render("No dev processes found."))
+		fmt.Println(S.Dim.Render("No dev processes found."))
 		return
 	}
 
 	headers := []string{"PID", "PROCESS", "CPU%", "MEM", "PROJECT", "FRAMEWORK", "UPTIME", "WHAT"}
-	colWidths := []int{8, 14, 6, 10, 18, 16, 10}
+	colWidths := []int{8, 14, 6, 10, 18, 16, 10, 30}
 
 	rows := make([][]string, len(processes))
 	for i, p := range processes {
@@ -348,14 +241,14 @@ func PrintPsTable(processes []types.ProcessInfo) {
 		}
 
 		vals := []string{
-			stylePID.Render(pidStr),
-			styleProcess.Render(p.ProcessName),
+			S.PID.Render(pidStr),
+			S.Process.Render(p.ProcessName),
 			cpuStr,
 			p.Memory,
-			styleProject.Render(p.ProjectName),
+			S.Project.Render(p.ProjectName),
 			colorizeFramework(frameworkStr),
-			styleUptime.Render(uptimeStr),
-			styleDim.Render(p.Description),
+			S.Uptime.Render(uptimeStr),
+			S.Dim.Render(p.Description),
 		}
 
 		rows[i] = vals
@@ -363,16 +256,16 @@ func PrintPsTable(processes []types.ProcessInfo) {
 
 	fmt.Println(renderTable(headers, rows, colWidths))
 	fmt.Println()
-	fmt.Println(styleDim.Render(fmt.Sprintf("%d process(es)", len(processes))))
+	fmt.Println(S.Dim.Render(fmt.Sprintf("%d process(es)", len(processes))))
 }
 
 func PrintCleanList(ports []types.PortInfo) {
 	if len(ports) == 0 {
-		fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("No orphaned or zombie processes found."))
+		fmt.Println(S.StatusHealthy.Render("No orphaned or zombie processes found."))
 		return
 	}
 
-	fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("220")).Render("Found orphaned/zombie processes:"))
+	fmt.Println(S.StatusOrphaned.Bold(true).Render("Found orphaned/zombie processes:"))
 	fmt.Println()
 
 	var lines []string
@@ -383,45 +276,96 @@ func PrintCleanList(ports []types.PortInfo) {
 		}
 		line := fmt.Sprintf("%s  PID: %s  %s  %s  %s",
 			statusStyled(p.Status),
-			stylePID.Render(fmt.Sprintf("%d", p.PID)),
-			styleProcess.Render(p.ProcessName),
+			S.PID.Render(fmt.Sprintf("%d", p.PID)),
+			S.Process.Render(p.ProcessName),
 			colorizeFramework(frameworkStr),
-			styleProject.Render(p.ProjectName),
+			S.Project.Render(p.ProjectName),
 		)
 		lines = append(lines, line)
 	}
 
 	content := strings.Join(lines, "\n")
-	fmt.Println(styleCleanBorder.Render(content))
+	fmt.Println(S.CleanBorder.Render(content))
 	fmt.Println()
 }
 
 func PrintWatchHeader() {
-	fmt.Println(styleDetailTitle.Render("  bleat watch  "))
+	fmt.Println(S.DetailTitle.Render("  bleat watch  "))
 	fmt.Println()
-	fmt.Println(styleDim.Render("Watching for port changes... (Ctrl+C to exit)"))
+	fmt.Println(S.Dim.Render("Watching for port changes... (Ctrl+C to exit)"))
 	fmt.Println()
+}
+
+type WatchEvent struct {
+	Kind string
+	Info types.PortInfo
+	Port int
+}
+
+func PrintWatchEvents(events []WatchEvent) {
+	if len(events) == 0 {
+		fmt.Println(S.Dim.Render("Watching for port changes..."))
+		return
+	}
+
+	headers := []string{"EVENT", "PORT", "PROCESS", "PID", "PROJECT", "FRAMEWORK", "UPTIME"}
+	colWidths := []int{8, 8, 14, 8, 18, 16, 10}
+
+	rows := make([][]string, len(events))
+	for i, e := range events {
+		var eventStr, portStr, processStr, pidStr, projectStr, frameworkStr, uptimeStr string
+
+		if e.Kind == "new" {
+			eventStr = S.WatchNew.Render("▲ NEW")
+			p := e.Info
+			portStr = S.Port.Render(fmt.Sprintf(":%d", p.Port))
+			processStr = S.Process.Render(p.ProcessName)
+			pidStr = S.PID.Render(fmt.Sprintf("%d", p.PID))
+			projectStr = S.Project.Render(p.ProjectName)
+			fw := p.Framework
+			if fw == "" {
+				fw = "-"
+			}
+			frameworkStr = colorizeFramework(fw)
+			uptimeStr = S.Uptime.Render(p.Uptime)
+
+			plainVals := []string{"▲ NEW", fmt.Sprintf(":%d", p.Port), p.ProcessName, fmt.Sprintf("%d", p.PID), p.ProjectName, fw, p.Uptime}
+			for j, v := range plainVals {
+				if len(v) > colWidths[j] {
+					colWidths[j] = len(v)
+				}
+			}
+		} else {
+			eventStr = S.WatchClosed.Render("▼ CLOSED")
+			portStr = S.Port.Render(fmt.Sprintf(":%d", e.Port))
+			processStr = S.Dim.Render("-")
+			pidStr = S.Dim.Render("-")
+			projectStr = S.Dim.Render("-")
+			frameworkStr = S.Dim.Render("-")
+			uptimeStr = S.Dim.Render("-")
+
+			plainVals := []string{"▼ CLOSED", fmt.Sprintf(":%d", e.Port), "-", "-", "-", "-", "-"}
+			for j, v := range plainVals {
+				if len(v) > colWidths[j] {
+					colWidths[j] = len(v)
+				}
+			}
+		}
+
+		rows[i] = []string{eventStr, portStr, processStr, pidStr, projectStr, frameworkStr, uptimeStr}
+	}
+
+	fmt.Println(renderTable(headers, rows, colWidths))
+	fmt.Println()
+	fmt.Println(S.Dim.Render(fmt.Sprintf("%d event(s)", len(events))))
 }
 
 func PrintNewPort(info types.PortInfo) {
-	frameworkStr := info.Framework
-	if frameworkStr == "" {
-		frameworkStr = "-"
-	}
-	fmt.Printf("  %s  %s  %s  %s  %s\n",
-		styleWatchNew.Render("▲ NEW"),
-		stylePort.Render(fmt.Sprintf(":%d", info.Port)),
-		styleProcess.Render(info.ProcessName),
-		styleProject.Render(info.ProjectName),
-		colorizeFramework(frameworkStr),
-	)
+	PrintWatchEvents([]WatchEvent{{Kind: "new", Info: info}})
 }
 
 func PrintClosedPort(port int) {
-	fmt.Printf("  %s  %s\n",
-		styleWatchClosed.Render("▼ CLOSED"),
-		stylePort.Render(fmt.Sprintf(":%d", port)),
-	)
+	PrintWatchEvents([]WatchEvent{{Kind: "closed", Port: port}})
 }
 
 func PrintKillPrompt() {
@@ -429,12 +373,12 @@ func PrintKillPrompt() {
 }
 
 func PrintKillSuccess() {
-	fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("✓ Process killed successfully."))
+	fmt.Println(S.StatusHealthy.Render("✓ Process killed successfully."))
 }
 
 func PrintKillFailed(err error) {
-	fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("✗ Failed to kill process: ") + err.Error())
-	fmt.Println(styleDim.Render("Try running with sudo."))
+	fmt.Println(lipgloss.NewStyle().Foreground(S.StatusZombie.GetForeground()).Render("✗ Failed to kill process: ") + err.Error())
+	fmt.Println(S.Dim.Render("Try running with sudo."))
 }
 
 func PrintCleanPrompt() {
@@ -444,15 +388,15 @@ func PrintCleanPrompt() {
 func PrintCleanSummary(success, failed int) {
 	fmt.Println()
 	if failed == 0 {
-		fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render(fmt.Sprintf("✓ Successfully killed %d process(es).", success)))
+		fmt.Println(S.StatusHealthy.Render(fmt.Sprintf("✓ Successfully killed %d process(es).", success)))
 	} else {
-		fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(fmt.Sprintf("Killed %d process(es), %d failed.", success, failed)))
+		fmt.Println(S.StatusOrphaned.Render(fmt.Sprintf("Killed %d process(es), %d failed.", success, failed)))
 	}
 }
 
 func PrintHelp() {
 	fmt.Println()
-	fmt.Println(styleHelpTitle.Render("  bleat  "))
+	fmt.Println(S.HelpTitle.Render("  bleat  "))
 	fmt.Println()
 
 	commands := [][]string{
@@ -464,6 +408,9 @@ func PrintHelp() {
 		{"bleat ps --all", "Show all processes"},
 		{"bleat clean", "Kill orphaned/zombie dev servers"},
 		{"bleat watch", "Monitor port changes in real-time"},
+		{"bleat theme", "Show current theme"},
+		{"bleat theme list", "List available themes"},
+		{"bleat theme set <name>", "Set the active theme"},
 		{"bleat help", "Show this help message"},
 	}
 
@@ -474,13 +421,73 @@ func PrintHelp() {
 		}
 	}
 
-	fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("165")).Render("USAGE"))
+	fmt.Println(S.DetailSection.Render("USAGE"))
 	fmt.Println()
 	for _, c := range commands {
 		fmt.Printf("  %s  %s\n",
-			styleHelpCmd.Render(padRight(c[0], cmdWidth)),
-			styleHelpDesc.Render(c[1]))
+			S.HelpCmd.Render(padRight(c[0], cmdWidth)),
+			S.HelpDesc.Render(c[1]))
 	}
+	fmt.Println()
+}
+
+func PrintThemeList(themes []string, currentTheme string) {
+	fmt.Println()
+	fmt.Println(S.HelpTitle.Render("  bleat themes  "))
+	fmt.Println()
+	fmt.Println(S.DetailLabel.Render("Current: ") + S.StatusHealthy.Render(currentTheme))
+	fmt.Println()
+
+	fmt.Println(S.DetailSection.Render("AVAILABLE THEMES"))
+	fmt.Println()
+
+	for _, name := range themes {
+		if name == currentTheme {
+			fmt.Printf("  %s %s\n", S.StatusHealthy.Render("●"), S.HelpCmd.Render(name))
+		} else {
+			gt, ok := gogh.Get(name)
+			if ok {
+				fmt.Printf("    %s %s%s%s%s%s%s%s%s\n",
+					name,
+					lipgloss.NewStyle().Foreground(gt.Red).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.Green).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.Yellow).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.Blue).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.Magenta).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.Cyan).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.BrightWhite).Render("██"),
+					lipgloss.NewStyle().Foreground(gt.Foreground).Render("██"),
+				)
+			} else {
+				fmt.Printf("    %s\n", S.Dim.Render(name))
+			}
+		}
+	}
+	fmt.Println()
+}
+
+func PrintThemeNotFound(name string) {
+	fmt.Println()
+	fmt.Println(S.StatusZombie.Render(fmt.Sprintf("Theme %q not found.", name)))
+	fmt.Println(S.Dim.Render("Run 'bleat theme list' to see available themes."))
+	fmt.Println()
+}
+
+func PrintThemeSetSuccess(name string) {
+	fmt.Println()
+	fmt.Println(S.StatusHealthy.Render(fmt.Sprintf("✓ Theme set to %q.", name)))
+	fmt.Println(S.Dim.Render("Run any bleat command to see the new theme."))
+	fmt.Println()
+}
+
+func PrintThemeShow(currentTheme string) {
+	fmt.Println()
+	fmt.Println(S.HelpTitle.Render("  bleat theme  "))
+	fmt.Println()
+	fmt.Printf("  %s  %s\n", S.DetailLabel.Render("Current:"), S.StatusHealthy.Render(currentTheme))
+	fmt.Println()
+	fmt.Println(S.Dim.Render("Run 'bleat theme list' to see available themes."))
+	fmt.Println(S.Dim.Render("Run 'bleat theme set <name>' to change theme."))
 	fmt.Println()
 }
 
@@ -500,4 +507,10 @@ func FormatUptime(startTime time.Time) string {
 		return fmt.Sprintf("%dh %dm", hours, minutes)
 	}
 	return fmt.Sprintf("%dm", minutes)
+}
+
+func ListThemesSorted() []string {
+	names := gogh.Names()
+	sort.Strings(names)
+	return names
 }
